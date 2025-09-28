@@ -3,16 +3,8 @@ import pandas as pd
 import json
 import os
 import time
+import matplotlib.pyplot as plt
 import numpy as np
-
-# Handle matplotlib import for Streamlit Cloud
-try:
-    import matplotlib
-    matplotlib.use('Agg')  # Use non-interactive backend
-    import matplotlib.pyplot as plt
-except ImportError:
-    st.error("matplotlib is not installed. Please check your requirements.txt file.")
-    st.stop()
 from mcqa_evaluation_ollama import (
     load_mcq_data_from_json, 
     predict_answers_for_mcq_data,
