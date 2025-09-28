@@ -12,7 +12,7 @@ from mcqa_evaluation_ollama import (
     make_ollama_request,
     get_model_prediction
 )
-from mcq_generation_ollama_v1 import generate_and_write_mcqs, ensure_dir
+from mcq_generation_ollama import generate_and_write_mcqs, ensure_dir
 import tempfile
 
 # Page config

@@ -43,7 +43,9 @@ def make_ollama_request(
             "temperature": temperature,
             "top_p": top_p,
             "seed": seed,
-            "num_predict": max_tokens
+            "num_predict": max_tokens,
+            "num_gpu": -1,
+            "num_ctx": 2048
         }
     }
     
@@ -60,48 +62,49 @@ def parse_mcq(mcq_text):
     """Parse MCQ text into structured format."""
     questions = []
     
-    # Split the text into individual questions
-    raw_questions = mcq_text.split('\n\n')
+    # Simple approach: split by **number: pattern
+    raw_questions = re.split(r'\*\*\d+:', mcq_text)
+    print(f"Found {len(raw_questions)} question blocks")
     
     for i, raw_q in enumerate(raw_questions, start=0):
         if not raw_q.strip():
             continue
         
         try:
-            # Initialize question dictionary
             question = {
                 "question_id": i,
                 "question_text": None,
-                "options": {
-                    "A": None, "B": None, "C": None, "D": None
-                },
+                "options": {"A": None, "B": None, "C": None, "D": None},
                 "correct_answer": None
             }
             
-            # Extract question number and text
-            q_match = re.search(r'\*\*(\d+):\s+(.+?)\*\*', raw_q)
+            # Extract question text (everything before first A) option)
+            q_match = re.search(r'(.+?)(?=\n[A-D]\)|$)', raw_q, re.DOTALL)
             if q_match:
-                question["question_text"] = q_match.group(2).strip()
+                question["question_text"] = q_match.group(1).strip()
             
-            # Extract options
+            # Extract options A), B), C), D)
             options = re.findall(r'([A-D])\)\s+(.+?)(?=\n[A-D]\)|$|\nAnswer:)', raw_q, re.DOTALL)
             for opt_letter, opt_text in options:
                 question["options"][opt_letter] = opt_text.strip()
             
             # Extract answer
-            answer_match = re.search(r'Answer:\s+([A-D])', raw_q)
+            answer_match = re.search(r'Answer:\s*([A-D])', raw_q)
             if answer_match:
                 question["correct_answer"] = answer_match.group(1)
             
-            # Only add complete questions
+            # Add if complete
             if (question["question_text"] and 
                 all(question["options"].values()) and 
                 question["correct_answer"]):
                 questions.append(question)
+                print(f"Added question {len(questions)}: {question['question_text'][:50]}...")
+                
         except Exception as e:
             print(f"Error parsing question: {e}")
             continue
     
+    print(f"Parsed {len(questions)} complete questions")
     return questions
 
 def generate_and_write_mcqs(reports, num_ques, output_file, url="http://localhost:11434/api/generate",
@@ -161,9 +164,8 @@ def generate_and_write_mcqs(reports, num_ques, output_file, url="http://localhos
                                     mcq["correct_answer"]):
                                     formatted_mcqs.append(mcq)
                                     
-                                if len(formatted_mcqs) >= num_ques:
-                                    print(f"Generated {len(formatted_mcqs)} MCQs for this report")
-                                    break
+                            print(f"Generated {len(formatted_mcqs)} MCQs for this report")
+                            break
 
                     except Timeout:
                         print(f"Request timed out for report: {report[:50]}...")
@@ -173,17 +175,17 @@ def generate_and_write_mcqs(reports, num_ques, output_file, url="http://localhos
                         continue
                 
                 # Check if we have num_ques valid MCQs
-                if len(formatted_mcqs) == num_ques:
-                    report_data = {
-                        "report": report,
-                        "questions": formatted_mcqs[:num_ques]  # Ensure we only take num_ques questions
-                    }
-                    # Write the report data to file
-                    json.dump(report_data, file)
-                    file.write(',\n' if i < len(reports) - 1 else '\n')
-                    file.flush()
-                    total_mcqs += num_ques
-                    total_reports_processed += 1
+                # if len(formatted_mcqs) == num_ques:
+                report_data = {
+                    "report": report,
+                    "questions": formatted_mcqs[:num_ques]  # Ensure we only take num_ques questions
+                }
+                # Write the report data to file
+                json.dump(report_data, file)
+                file.write(',\n' if i < len(reports) - 1 else '\n')
+                file.flush()
+                total_mcqs += len(formatted_mcqs)
+                total_reports_processed += 1
 
             # Write the closing of the JSON structure
             file.write(']\n}')
@@ -265,7 +267,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate and Shuffle MCQs using Ollama')
     parser.add_argument('--input_csv', default=os.getenv("RRGEVAL_INPUT_CSV_PATH", "sample_reports.csv"), help='Input CSV file path')
     parser.add_argument('--output_dir', default=os.getenv("RRGEVAL_OUTPUT_DIR", "./output"), help='Output directory')
-    parser.add_argument('--reference', choices=['gt', 'gen'], default='gt', help='Reference type')
+    parser.add_argument('--reference', choices=['gt', 'gen'], default='gen', help='Reference type')
     parser.add_argument('--num_questions', type=int, default=40, help='Number of questions per report')
     parser.add_argument('--seed', type=int, default=123, help='Random seed for reproducibility')
     parser.add_argument('--ollama_url', default="http://localhost:11434/api/generate", help='Ollama API URL')
@@ -314,6 +316,7 @@ def main():
     print(f"MCQs saved to {json_output_file}")
     print(f"Total reports processed: {total_reports}")
     print(f"Total MCQs generated: {total_mcqs}")
+    print(f"Total valid MCQs generated: {total_mcqs}")
     
     # Generate shuffled version
     shuffled_output_dir = f"{args.output_dir}/shuffled_ans_choices_data/{args.reference}_reports_as_ref"
