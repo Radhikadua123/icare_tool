@@ -24,8 +24,7 @@ cd /path/to/icare_tool && OLLAMA_GPU_LAYERS=-1 ollama serve &
 ### 3. Pull the model
 
 ```bash
-cd /path/to/icare_tool
-ollama pull llama3.1
+cd /path/to/icare_tool && ollama pull llama3.1
 ```
 
 ### 4. (Optional) Test the model
